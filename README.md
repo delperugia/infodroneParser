@@ -8,10 +8,10 @@ first example from https://github.com/seladb/PcapPlusPlus#getting-started
 test on a local .pcapng file
 
 rm -rf                build/
-cmake      -B         build/
-cmake      --build    build/
+cmake      -B         build/ --fresh
+cmake      --build    build/ -j
 
-./build/infodroneParser tests/local.pcapng
+./build/infodroneParser tests/anafi-infodrone.pcapng
 
 To parse Remote ID:
   using https://github.com/opendroneid/opendroneid-core-c

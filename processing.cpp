@@ -18,6 +18,6 @@ void DecorationStep::process(const Record &record)
 
 void DisplayStep::process(const Record &record)
 {
-  std::cout << "[Display] " << record.basicIds[0].uasId << " \n";
+  std::cout << "[Display] " << record.ssid.value() << " \n";
   PipelineStep::process(record);
 }

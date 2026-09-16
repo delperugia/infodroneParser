@@ -1,194 +1,124 @@
 #include <Packet.h>
 #include <PcapFileDevice.h>
+#include <libopendroneid/opendroneid.h>
 
 #include <algorithm>
-#include <array>
-#include <cstring>
-#include <string>
 
 #include "parser.hpp"
 
-namespace {
-
-constexpr size_t kRadiotapMinimumLength = 8;
-constexpr size_t kManagementHeaderLength = 24;
-constexpr size_t kBeaconFixedParametersLength = 12;
-constexpr size_t kRemoteIdMessageLength = 25;
-
-uint16_t readLe16(const uint8_t* data)
+namespace
 {
-  return static_cast<uint16_t>(data[0]) |
-         (static_cast<uint16_t>(data[1]) << 8);
-}
+constexpr std::size_t kRadiotapFixedHeaderSize = 8;
+constexpr std::size_t kManagementHeaderSize = 24;
+constexpr std::size_t kBeaconFixedParametersSize = 12;
 
-uint32_t readLe32(const uint8_t* data)
+bool readRadiotapSignal(const std::uint8_t *data, std::size_t length,
+                        std::size_t &ieee80211Offset, Record &record)
 {
-  return static_cast<uint32_t>(data[0]) |
-         (static_cast<uint32_t>(data[1]) << 8) |
-         (static_cast<uint32_t>(data[2]) << 16) |
-         (static_cast<uint32_t>(data[3]) << 24);
-}
-
-int32_t readLeI32(const uint8_t* data)
-{
-  return static_cast<int32_t>(readLe32(data));
-}
-
-std::string readText(const uint8_t* data, size_t length)
-{
-  const auto end = std::find(data, data + length, uint8_t{0});
-  return {reinterpret_cast<const char*>(data), static_cast<size_t>(end - data)};
-}
-
-double decodeAltitude(uint16_t value)
-{
-  return value * 0.5 - 1000.0;
-}
-
-void decodeMessage(Record& record, const uint8_t* message)
-{
-  record.protocolVersion = message[0] & 0x0f;
-
-  switch (message[0] >> 4)
-  {
-  case 0: // Basic ID
-    record.basicIds.push_back({static_cast<uint8_t>(message[1] >> 4),
-                               static_cast<uint8_t>(message[1] & 0x0f),
-                               readText(message + 2, 20)});
-    break;
-
-  case 1: // Location/Vector
-  {
-    const uint8_t flags = message[1];
-    const uint8_t encodedDirection = message[2];
-    const uint8_t encodedSpeed = message[3];
-    const bool eastWestDirection = (flags & 0x02) != 0;
-    const bool speedMultiplier = (flags & 0x01) != 0;
-
-    Record::Location location{
-      static_cast<uint8_t>(flags >> 4),
-      encodedDirection == 255 ? 361.0 : encodedDirection + (eastWestDirection ? 180.0 : 0.0),
-      speedMultiplier ? 63.75 + encodedSpeed * 0.75 : encodedSpeed * 0.25,
-      static_cast<int8_t>(message[4]) * 0.5,
-      readLeI32(message + 5) * 1e-7,
-      readLeI32(message + 9) * 1e-7,
-      decodeAltitude(readLe16(message + 13)),
-      decodeAltitude(readLe16(message + 15)),
-      static_cast<uint8_t>((flags >> 2) & 0x01),
-      decodeAltitude(readLe16(message + 17)),
-      static_cast<uint8_t>(message[19] & 0x0f),
-      static_cast<uint8_t>(message[19] >> 4),
-      static_cast<uint8_t>(message[20] >> 4),
-      static_cast<uint8_t>(message[20] & 0x0f),
-      static_cast<uint8_t>(message[23] & 0x0f),
-      readLe16(message + 21) * 0.1,
-    };
-    record.location = location;
-    break;
-  }
-
-  case 2: // Authentication
-  {
-    Record::Authentication authentication{
-      static_cast<uint8_t>(message[1] >> 4), static_cast<uint8_t>(message[1] & 0x0f),
-      std::nullopt, std::nullopt, std::nullopt, {}};
-    if (authentication.page == 0)
-    {
-      authentication.lastPage = message[2];
-      authentication.length = message[3];
-      authentication.timestampSecondsSince2019 = readLe32(message + 4);
-      authentication.data.assign(message + 8, message + kRemoteIdMessageLength);
-    }
-    else
-      authentication.data.assign(message + 2, message + kRemoteIdMessageLength);
-    record.authentications.push_back(std::move(authentication));
-    break;
-  }
-
-  case 3: // Self ID
-    record.selfId = Record::SelfId{message[1], readText(message + 2, 23)};
-    break;
-
-  case 4: // System
-    record.system = Record::System{
-      static_cast<uint8_t>(message[1] & 0x03),
-      static_cast<uint8_t>((message[1] >> 2) & 0x07),
-      readLeI32(message + 2) * 1e-7, readLeI32(message + 6) * 1e-7,
-      readLe16(message + 10), static_cast<uint16_t>(message[12] * 10),
-      decodeAltitude(readLe16(message + 13)), decodeAltitude(readLe16(message + 15)),
-      static_cast<uint8_t>(message[17] >> 4), static_cast<uint8_t>(message[17] & 0x0f),
-      decodeAltitude(readLe16(message + 18)), readLe32(message + 20)};
-    break;
-
-  case 5: // Operator ID
-    record.operatorId = Record::OperatorId{message[1], readText(message + 2, 20)};
-    break;
-  }
-}
-
-bool decodeRemoteIdBeacon(const pcpp::Packet& parsedPacket, Record& record)
-{
-  const auto* rawPacket = parsedPacket.getRawPacket();
-  const auto* data = rawPacket->getRawData();
-  const size_t length = rawPacket->getRawDataLen();
-  if (length < kRadiotapMinimumLength)
+  if (length < kRadiotapFixedHeaderSize || data[0] != 0)
     return false;
 
-  const size_t radiotapLength = readLe16(data + 2);
-  if (radiotapLength < kRadiotapMinimumLength || radiotapLength + kManagementHeaderLength +
-      kBeaconFixedParametersLength > length)
+  const std::size_t radiotapLength = data[2] | (static_cast<std::size_t>(data[3]) << 8);
+  if (radiotapLength < kRadiotapFixedHeaderSize || radiotapLength > length)
     return false;
 
-  const uint8_t* frame = data + radiotapLength;
-  const size_t frameLength = length - radiotapLength;
-  if ((frame[0] & 0x0c) != 0 || (frame[0] >> 4) != 8) // management Beacon
-    return false;
-
-  std::memcpy(record.sourceMac.data(), frame + 10, record.sourceMac.size());
-  size_t offset = kManagementHeaderLength + kBeaconFixedParametersLength;
-  bool found = false;
-  while (offset + 2 <= frameLength)
+  std::size_t presentOffset = 4;
+  std::uint32_t present = 0;
+  do
   {
-    const uint8_t elementId = frame[offset];
-    const size_t elementLength = frame[offset + 1];
-    offset += 2;
-    if (offset + elementLength > frameLength)
+    if (presentOffset + 4 > radiotapLength)
       return false;
 
-    const uint8_t* element = frame + offset;
-    offset += elementLength;
-    if (elementId != 221 || elementLength < 5)
+    const std::uint32_t currentPresent = static_cast<std::uint32_t>(data[presentOffset]) |
+                                         (static_cast<std::uint32_t>(data[presentOffset + 1]) << 8) |
+                                         (static_cast<std::uint32_t>(data[presentOffset + 2]) << 16) |
+                                         (static_cast<std::uint32_t>(data[presentOffset + 3]) << 24);
+    if (presentOffset == 4)
+      present = currentPresent;
+    presentOffset += 4;
+    if ((currentPresent & 0x80000000U) == 0)
+      break;
+  } while (true);
+
+  // The dBm antenna signal field is bit 5. Its preceding standard fields are
+  // sufficient to locate it; later radiotap fields are not needed here.
+  constexpr std::size_t fieldAlignment[] = {8, 1, 1, 2, 2, 1};
+  constexpr std::size_t fieldSize[] = {8, 1, 1, 4, 2, 1};
+  std::size_t fieldOffset = presentOffset;
+  for (std::size_t bit = 0; bit <= 5; ++bit)
+  {
+    if ((present & (1U << bit)) == 0)
       continue;
 
-    // Pre-ASTM Parrot Drone ID: OUI 90:03:B7, type 09. Its payload only
-    // carries the Basic ID's type byte followed by the UAS ID.
-    if (element[0] == 0x90 && element[1] == 0x03 && element[2] == 0xb7 && element[3] == 0x09)
-    {
-      record.basicIds.push_back({static_cast<uint8_t>(element[4] >> 4),
-                                 static_cast<uint8_t>(element[4] & 0x0f),
-                                 readText(element + 5, elementLength - 5)});
-      found = true;
-      continue;
-    }
+    fieldOffset = (fieldOffset + fieldAlignment[bit] - 1) & ~(fieldAlignment[bit] - 1);
+    if (fieldOffset + fieldSize[bit] > radiotapLength)
+      return false;
 
-    if (elementLength < 8 || element[0] != 0xfa || element[1] != 0x0b ||
-        element[2] != 0xbc || element[3] != 0x0d)
-      continue;
-
-    record.messageCounter = element[4];
-    const uint8_t* pack = element + 5;
-    const size_t packLength = elementLength - 5;
-    if (packLength < 3 || (pack[0] >> 4) != 15 || pack[1] != kRemoteIdMessageLength ||
-        pack[2] == 0 || pack[2] > 9 || 3 + pack[2] * kRemoteIdMessageLength > packLength)
-      continue;
-
-    for (size_t i = 0; i < pack[2]; ++i)
-      decodeMessage(record, pack + 3 + i * kRemoteIdMessageLength);
-    found = true;
+    if (bit == 5)
+      record.signalStrengthDbm = static_cast<std::int8_t>(data[fieldOffset]);
+    fieldOffset += fieldSize[bit];
   }
-  return found;
+
+  ieee80211Offset = radiotapLength;
+  return true;
 }
 
+void decodeRemoteId(const std::uint8_t *data, std::size_t length, Record &record)
+{
+  ODID_UAS_Data uasData;
+  odid_initUasData(&uasData);
+  if (odid_message_process_pack(&uasData, data, length) < 0)
+    return;
+
+  for (std::size_t i = 0; i < ODID_BASIC_ID_MAX_MESSAGES; ++i)
+  {
+    if (uasData.BasicIDValid[i] == 0)
+      continue;
+
+    const char *id = uasData.BasicID[i].UASID;
+    const auto *end = std::find(id, id + ODID_ID_SIZE, '\0');
+    record.remoteIds.emplace_back(id, end);
+  }
+}
+
+void parseBeacon(const std::uint8_t *data, std::size_t length,
+                 std::size_t ieee80211Offset, Record &record)
+{
+  if (ieee80211Offset + kManagementHeaderSize + kBeaconFixedParametersSize > length)
+    return;
+
+  const std::uint16_t frameControl = data[ieee80211Offset] |
+                                     (static_cast<std::uint16_t>(data[ieee80211Offset + 1]) << 8);
+  constexpr std::uint16_t kManagementBeacon = 0x0080;
+  if ((frameControl & 0x00fc) != kManagementBeacon)
+    return;
+
+  const std::size_t managementHeaderSize = kManagementHeaderSize +
+                                           ((frameControl & 0x8000) != 0 ? 4 : 0);
+  std::size_t offset = ieee80211Offset + managementHeaderSize + kBeaconFixedParametersSize;
+  if (offset > length)
+    return;
+
+  while (offset + 2 <= length)
+  {
+    const std::uint8_t elementId = data[offset];
+    const std::size_t elementLength = data[offset + 1];
+    offset += 2;
+    if (elementLength > length - offset)
+      return;
+
+    const std::uint8_t *element = data + offset;
+    if (elementId == 0) // SSID
+      record.ssid = std::string(reinterpret_cast<const char *>(element), elementLength);
+    else if (elementId == 7 && elementLength >= 2) // Country
+      record.countryCode = std::string(reinterpret_cast<const char *>(element), 2);
+    else if (elementId == 221 && elementLength >= 5 &&
+             element[0] == 0xfa && element[1] == 0x0b && element[2] == 0xbc && element[3] == 0x0d)
+      decodeRemoteId(element + 5, elementLength - 5, record);
+
+    offset += elementLength;
+  }
+}
 } // namespace
 
 // pcpp::Packet parsing alters rawPacket: we could pass here a reference to the
@@ -198,10 +128,16 @@ void ParserBase::handleRaw( pcpp::RawPacket rawPacket)
   pcpp::Packet parsedPacket(&rawPacket);
   Record       record;
 
-  if (decodeRemoteIdBeacon(parsedPacket, record))
-    m_handler(record);
-  else
-    ; // future
+  // PcapPlusPlus currently exposes 802.11/radiotap captures as raw data.
+  // Obtain that data through the parsed packet so it remains the packet source.
+  const auto *packet = parsedPacket.getRawPacket();
+  const auto *data = packet->getRawData();
+  const auto length = static_cast<std::size_t>(packet->getRawDataLen());
+  std::size_t ieee80211Offset = 0;
+  if (readRadiotapSignal(data, length, ieee80211Offset, record))
+    parseBeacon(data, length, ieee80211Offset, record);
+
+  m_handler(record);
 }
 
 bool ParserPcapng::parseFile(const std::string &filepath)
