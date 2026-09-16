@@ -1,6 +1,7 @@
 
-
 # Prerequisite
+
+Development was done on Ubuntu 26.04.
 
     sudo apt install cmake g++ libpcap-dev libtins-dev libbsd-dev
 

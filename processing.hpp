@@ -1,7 +1,8 @@
 #pragma once
 
-#include "record.hpp"
 #include <memory>
+
+#include "record.hpp"
 
 //-------------------------------------------------------------------
 // A step in the processing chain of responsibility

@@ -5,5 +5,5 @@ Maintainer:   dummy <email@example.com>
 Section:      utils
 Priority:     optional
 Depends:      libpcap0.8t64 | libpcap0.8, libtins4.5
-Description: Extract InfoDrone packets from .pcap files
- Extract InfoDrone packets from .pcap files
+Description:  Extract InfoDrone packets from .pcap files
+ Parseur InfoDrone - Signalement électronique de drones
