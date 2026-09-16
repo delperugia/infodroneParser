@@ -49,3 +49,13 @@ target_compile_options    ( infodroneParser PRIVATE
         -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fvisibility=hidden
     >
 )
+
+#--------------------------------------------------------------------
+add_custom_target( package
+    COMMAND ${CMAKE_COMMAND} -E make_directory package/usr/local/bin/
+    COMMAND ${CMAKE_COMMAND} -E copy build/infodroneParser package/usr/local/bin/
+    COMMAND dpkg-deb --root-owner-group --build package infodroneparser_1.0.0-1_amd64.deb
+    DEPENDS infodroneParser
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Building .deb package"
+)
