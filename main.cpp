@@ -29,7 +29,7 @@ int main( int argc, char * argv[] )
         case EX_NOINPUT:  std::cerr << "Error opening the file"                    << std::endl; break;
         case EX_DATAERR:  std::cerr << "PCAPNG file is not a 802.11 radio capture" << std::endl; break;
         case EX_PROTOCOL: std::cerr << "Error processing file"                     << std::endl; break;
-        case EX_OK:       std::cout << "Ok"                                        << std::endl; break;
+        case EX_OK:                                                                              break;
         default:          std::cout << "Unknown result"                            << std::endl; break;
     }
     //

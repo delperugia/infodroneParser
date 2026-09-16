@@ -25,7 +25,7 @@ void DecorationStep::process( Record & record )
 //-------------------------------------------------------------------
 void DisplayStep::process( Record & record )
 {
-    std::cout << "#" << record.frameNumber << ": ";
+    std::cout << ( record.errorDump.has_value() ? "E" : "#" ) << record.frameNumber << ": ";
     //
     std::cout << ( record.ssid.has_value()               ? record.ssid              .value() : "?"  ) << " ";
     std::cout << ( record.countryCode.has_value()        ? record.countryCode       .value() : "?"  ) << " ";
