@@ -1,7 +1,8 @@
-#include "parser.hpp"
-#include "processing.hpp"
 #include <iostream>
 #include <sysexits.h>
+
+#include "parser.hpp"
+#include "processing.hpp"
 
 int main( int argc, char * argv[] )
 {
@@ -11,29 +12,26 @@ int main( int argc, char * argv[] )
         return EX_USAGE;
     }
     //
+    // Build the processing layer
     auto decoration = std::make_shared< DecorationStep >();
     auto display    = std::make_shared< DisplayStep >();
     decoration->setNext( display );
     //
+    // The parser, linked to the processing
     ParserPcapng parser(
         [ decoration ]( Record & record ) { decoration->process( record ); } );
     //
+    // Process
     int result = parser.parseFile( argv[ 1 ] );
     //
     switch( result )
     {
-        case EX_NOINPUT:    std::cerr << "Erreur ouverture fichier"     << std::endl; break;
-        case EX_DATAERR:    std::cerr << "Fichier sans frames RadioTap" << std::endl; break;
-        case EX_PROTOCOL:   std::cerr << "Erreur de lecture"            << std::endl; break;
-        case EX_OK:         std::cout << "Ok"                           << std::endl; break;
-        default:            std::cout << "Unknown"                      << std::endl; break;
+        case EX_NOINPUT:  std::cerr << "Error opening the file"                    << std::endl; break;
+        case EX_DATAERR:  std::cerr << "PCAPNG file is not a 802.11 radio capture" << std::endl; break;
+        case EX_PROTOCOL: std::cerr << "Error processing file"                     << std::endl; break;
+        case EX_OK:       std::cout << "Ok"                                        << std::endl; break;
+        default:          std::cout << "Unknown result"                            << std::endl; break;
     }
-    /*
-            std::cerr << "Erreur ouverture fichier: " << errbuf << "\n";
-std::cerr << "Fichier sans frames RadioTap (linktype=" << linktype
-                  << ", attendu DLT_IEEE802_11_RADIO=" << DLT_IEEE802_11_RADIO << ")\n";
-    std::cerr << "Erreur de lecture: " << pcap_geterr(handle) << "\n";
-    */
     //
     exit( result );
     return EX_OK;

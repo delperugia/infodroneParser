@@ -16,5 +16,7 @@ struct Record
     std::optional< std::string > transmitterAddress;
     std::optional< std::string > countryCode;
 
-    std::optional< std::string > errorDump;  // if a parsing error occurred, contains the frame dump; other fields may or not be set
+    // If a parsing error occurred, contains the frame dump; other fields
+    // may or not be set (frameNumber is always set)
+    std::optional< std::vector<uint8_t> > errorDump;
 };

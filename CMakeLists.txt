@@ -5,7 +5,7 @@ project(
     LANGUAGES   CXX
 )
 
-set( CMAKE_CXX_STANDARD          17 )
+set( CMAKE_CXX_STANDARD          20 )
 set( CMAKE_CXX_STANDARD_REQUIRED ON )
 
 find_package( PkgConfig REQUIRED )
@@ -39,4 +39,13 @@ target_include_directories( infodroneParser PRIVATE
 target_link_libraries     ( infodroneParser PRIVATE
     ${PCAP_LIBRARY}
     ${TINS_LIBRARIES}
+)
+
+target_compile_options    ( infodroneParser PRIVATE
+    $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:
+        -Wall -Wextra -Wpedantic -Wcast-align -Wcast-qual -Wformat=2
+        -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow
+        -Wswitch -Wswitch-default -Wundef -Werror
+        -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fvisibility=hidden
+    >
 )
