@@ -1,29 +1,29 @@
 #pragma once
 
-#include <memory>
 #include "record.hpp"
+#include <memory>
 
 class PipelineStep
 {
 protected:
-  std::shared_ptr<PipelineStep> nextStep;
+    std::shared_ptr< PipelineStep > nextStep;
 
 public:
-  virtual ~PipelineStep() = default;
+    virtual ~PipelineStep() = default;
 
-  void setNext(std::shared_ptr<PipelineStep> next) { nextStep = next; }
+    void setNext( std::shared_ptr< PipelineStep > next ) { nextStep = next; }
 
-  virtual void process(const Record &record);
+    virtual void process( Record & record );
 };
 
 class DecorationStep : public PipelineStep
 {
 public:
-  void process(const Record &record) override;
+    void process( Record & record ) override;
 };
 
 class DisplayStep : public PipelineStep
 {
 public:
-  void process(const Record &record) override;
+    void process( Record & record ) override;
 };

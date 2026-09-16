@@ -2,28 +2,27 @@
 
 #include <functional>
 #include <string>
-#include <Packet.h>
 
 #include "record.hpp"
 
 class ParserBase
 {
 protected:
-  using RecordHandler = std::function<void(const Record &)>;
+    using RecordHandler = std::function< void( Record & ) >;
 
-  RecordHandler m_handler;
+    RecordHandler m_recordHandler;
 
 public:
-  ParserBase(RecordHandler handler) : m_handler(handler) {}
-  virtual ~ParserBase() = default;
+    ParserBase( RecordHandler handler ) : m_recordHandler( handler ) {}
+    virtual ~ParserBase() = default;
 
-  void handleRaw(pcpp::RawPacket rawPacket);
+    void handleRaw( unsigned long frameNumber, const uint8_t * data, size_t length );
 };
 
 class ParserPcapng : public ParserBase
 {
 public:
-  using ParserBase::ParserBase;
+    using ParserBase::ParserBase;
 
-  bool parseFile(const std::string &filepath);
+    int parseFile( const std::string & filepath );
 };
