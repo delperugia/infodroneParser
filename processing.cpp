@@ -2,22 +2,34 @@
 
 #include "processing.hpp"
 
-void PipelineStep::process(const Record &record)
+void PipelineStep::process( Record & record )
 {
-  if (nextStep)
-    nextStep->process(record);
+    if ( nextStep )
+        nextStep->process( record );
 }
 
-void DecorationStep::process(const Record &record)
+void DecorationStep::process( Record & record )
 {
-  // if (record.data.find("1") != std::string::npos)
-  {
-    PipelineStep::process(record);
-  }
+    if ( record.transmitterAddress.has_value() )
+    {
+        if ( record.transmitterAddress.value() == "90:3a:e6" )
+            record.transmitterAddress = "Parrot (90:3a:e6)";
+    }
+    //
+    PipelineStep::process( record );
 }
 
-void DisplayStep::process(const Record &record)
+void DisplayStep::process( Record & record )
 {
-  std::cout << "[Display] " << record.ssid.value() << " \n";
-  PipelineStep::process(record);
+    std::cout << "#" << record.frameNumber << ": ";
+    //
+    std::cout << ( record.ssid.has_value()               ? record.ssid              .value() : "?" ) << " ";
+    std::cout << ( record.transmitterAddress.has_value() ? record.transmitterAddress.value() : "?" ) << " ";
+    std::cout
+        << ( record.signalStrengthDbm.has_value() ? record.signalStrengthDbm.value() : -128 )
+        << "dBm ";
+    //
+    std::cout << "\n";
+    //
+    PipelineStep::process( record );
 }
